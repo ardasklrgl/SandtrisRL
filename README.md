@@ -11,21 +11,27 @@
 
 <div align="center">
   <img src="assets/master_bot_gameplay.gif" alt="Master Bot Gameplay Demo" width="700"/>
-  <p><em>The Master Bot achieving sustained, grandmaster-level play (15,000+ steps) via 2-ply Expectimax lookahead.</em></p>
+  <p><em>The best bot achieving sustained, master level play (15,000+ steps/pieces) via 2-step Expectimax lookahead.</em></p>
 </div>
 
-**Sandtris AI** is an autonomous game-playing system built to solve the notoriously chaotic dynamics of **Falling-Sand Tetris**. When a tetromino lands in Sandtris, its rigid structure shatters into 100 independent grains of sand that collapse under gravity and slide into adjacent valleys. 
+**Sandtris AI** is an autonomous game-playing system built to solve the notoriously chaotic dynamics of **Falling-Sand Tetris**. When a tetromino lands in Sandtris, its rigid structure shatters into 100 grains of sand that collapse under gravity and slide into adjacent valleys. 
 
-> **Important Note on the AI Approach:**  
-> Despite the project's historical name, the high-performing **Master Bot is NOT powered by Deep Reinforcement Learning (RL)**. Standard deep neural networks (such as PPO and DQN with CNNs) struggle severely with Sandtris due to extreme reward sparsity, non-rigid fluid dynamics, and spatial sensitivity. Instead, the Master Bot achieves near-immortal performance through a **carefully engineered 24-dimensional topological feature extractor, non-linear clipping bounds ("accidental logic gates"), a parameter vector optimized via CMA-ES (Covariance Matrix Adaptation Evolution Strategy), and a 2-ply Expectimax beam search lookahead** backed by a compiled C physics core.
+**Important Note on the AI Approach:**  
+Despite the project's historical name, the high performing **Master Bot is NOT powered by Deep Reinforcement Learning**. Standard deep neural networks (such as PPO and DQN with CNNs) struggle severely with Sandtris due to reward sparsity, non-rigid fluid dynamics, and spatial sensitivity. 
 
-*Curious about the engineering, mathematics, and architecture behind the bot? Scroll down for the complete deep dive.*
+Instead, the Master Bot achieves near immortal performance through a **engineered 24-dimensional topological feature extractor, non-linear clipping bounds ("accidental logic gates"), a parameter vector optimized via CMA-ES (Covariance Matrix Adaptation Evolution Strategy), and a 2-step Expectimax beam search lookahead** backed by a C physics core.
+
+However, **the complete Gymnasium compliant environment (sandtris_env_v10.py)** is fully intact and included in this repository for anyone interested in experimenting, benchmarking, or training their own custom RL algorithms (PPO, DQN, A2C, etc.) on Sandtris.
+
+More details on challenges of Sandtris, and a deep dive on the architecture of the bot can be found below.
+
+Jump to [Section 9](#9-installation--quickstart-guide) for the guide to installation and training the bot.
 
 ---
 
 ## Table of Contents
 1. [Gameplay Demonstrations](#1-gameplay-demonstrations)
-2. [The Sandtris Challenge: Why It Is Notorious for Computers](#2-the-sandtris-challenge-why-it-is-notorious-for-computers)
+2. [The Sandtris Challenge](#2-the-sandtris-challenge)
 3. [The 24-Dimensional Feature Space](#3-the-24-dimensional-feature-space)
 4. [The "Accidental Logic Gate" Clipping Breakthrough](#4-the-accidental-logic-gate-clipping-breakthrough)
 5. [CMA-ES Evolutionary Optimization](#5-cma-es-evolutionary-optimization)
@@ -51,42 +57,21 @@ Below is a comparison of different gameplay strategies, illustrating the progres
 
 ---
 
-## 2. The Sandtris Challenge: Why It Is Notorious for Computers
+## 2. The Sandtris Challenge
 
-To understand why traditional Game AI methods fail so catastrophically at Sandtris, one must appreciate how fundamentally it differs from classical discrete Tetris.
+### What is easy for humans?
 
-```
-Classical 1984 Tetris (Discrete, Rigid)        Sandtris (Continuous Granular Fluid Dynamics)
-┌─────────────────────────────────┐            ┌───────────────────────────────────────────┐
-│  [ ] [ ] [ ] [ ] [ ] [ ] [ ]    │            │            . : : .   (Sand Dune Peak)     │
-│  [X] [X] [X] [X] [X] [X] [X]    │ <- 1 Row   │          . : : : : .                      │
-│  [X] [ ] [X] [X] [ ] [X] [X]    │   Clear    │      . : : ~Red Path~ : : . <- Path Clear!│
-└─────────────────────────────────┘            │     : : : : : : : : : : : : :             │
-                                               └───────────────────────────────────────────┘
-```
+In classical Tetris, a piece stays exactly where it lands. In Sandtris, every piece shatters into 100 grains upon contact. Each grain is governed by a **cellular automaton with a $45^\circ$ angle of repose**: If the space below is free, grain falls vertically. If blocked, grain spills laterally down-left or down-right.
 
-### 1. Human Visual Gestalt vs. Computer Lattice Perception
-* **How humans see the board**: A human player glances at Sandtris and instantly perceives continuous color bands, macroscopic slopes, and natural funnel crevices. Humans do not count pixels; they use intuitive physics and fluid gestalt recognition to drop pieces where sand will naturally slide into gaps.
-* **How a computer sees the board**: A computer must process an **$85 \times 150$ grid containing 12,750 independent cells**, each of which can hold one of 4 colors or air ($4^{12,750}$ potential states). There are no rigid objects, fixed bounding boxes, or static reference points.
+A line clear in Sandtris is **not** a filled horizontal row. Instead, a clear is a **continuous, monochromatic connected component** touching both walls. The clearing path can be jagged, diagonal, undulating like a snake, or mostly buried.
 
-### 2. The Mechanics of Granular Avalanches
-In classical Tetris, a piece stays exactly where it lands. In Sandtris, every piece shatters into 100 grains upon contact. Each grain is governed by a **cellular automaton with a $45^\circ$ angle of repose**:
-* If the space below is free, sand falls vertically.
-* If blocked, sand spills laterally down-left or down-right.
-* This means dropping a piece on column 40 can trigger an avalanche that spills into column 35 and column 45, completely altering the terrain across multiple columns.
+A single poorly placed piece of the wrong color can spill over a nearly finished group, burying that color beneath a 30-pixel-deep sand dune. In classical Tetris, you can dig through bad placements row by row but in Sandtris, **burying a color often renders it permanently inaccessible for the next 40 to 60 moves**, causing an unrecoverable downward spiral.
 
-### 3. Topological Percolation vs. Flat Row Clears
-A line clear in Sandtris is **not** a filled horizontal row. Instead, a clear is a **continuous, monochromatic connected component** connecting the left wall ($x=0$) to the right wall ($x=84$):
-* The clearing path can be jagged, diagonal, or undulating like a snake.
-* When a path clears, all grains in that connected component vanish, and the massive sand mountain above it undergoes dynamic gravitational collapse into the newly formed void.
+A human player glances at Sandtris and instantly perceives continuous color groups, slopes, and crevices. More importantly we can very intuitively see **how the grains will fall and settle** before we drop the piece. Can decide to protect the nearly finishing clusters.
 
-### 4. Irreversible State Corruption
-A single poorly placed piece of the wrong color can spill over a nearly finished line, burying that color beneath a 30-pixel-deep sand dune. In classical Tetris, you can dig through bad placements row-by-row. In Sandtris, **burying a color often renders it permanently inaccessible for the next 40 to 60 moves**, causing an unrecoverable downward spiral.
-
-### 5. Why Deep Reinforcement Learning (CNNs / PPO / DQN) Fails
+### Why is it notorious for Deep Reinforcement Learning (CNNs / PPO / DQN)?
 1. **Translational Invariance Breaks Down**: CNN convolutional kernels rely on patterns looking the same regardless of position. But two sand dunes of identical volume and color look completely different to a CNN if one has shifted sideways by just 2 pixels during an avalanche.
 2. **Extreme Reward Sparsity**: Clearing a path requires 15 to 40 consecutive moves of carefully building up matching colors across an 85-column expanse. A randomly exploring RL agent almost never sees a reward, making temporal credit assignment practically impossible.
-3. **Action Space Mismatch**: Frame-by-frame steering (left/right/rotate/drop) wastes 99% of training time learning joystick coordination rather than learning long-term topological planning.
 
 ---
 
