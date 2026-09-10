@@ -5,66 +5,218 @@
 [![Algorithm](https://img.shields.io/badge/Optimization-CMA--ES%20%2B%20Beam%20Search-orange.svg)](#)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](#)
 
-> **An autonomous AI system capable of surviving over 15,000 consecutive steps in Sandtris (Falling-Sand Tetris). Combines a compiled C-core cellular automata physics engine, a 24-dimensional topological feature extractor with non-linear clipping gates, CMA-ES evolutionary optimization, and 2-ply Expectimax beam search lookahead.**
+---
+
+## Overview
+
+<div align="center">
+  <img src="assets/master_bot_gameplay.gif" alt="Master Bot Gameplay Demo" width="700"/>
+  <p><em>The Master Bot achieving sustained, grandmaster-level play (15,000+ steps) via 2-ply Expectimax lookahead.</em></p>
+</div>
+
+**Sandtris AI** is an autonomous game-playing system built to solve the notoriously chaotic dynamics of **Falling-Sand Tetris**. When a tetromino lands in Sandtris, its rigid structure shatters into 100 independent grains of sand that collapse under gravity and slide into adjacent valleys. 
+
+> **Important Note on the AI Approach:**  
+> Despite the project's historical name, the high-performing **Master Bot is NOT powered by Deep Reinforcement Learning (RL)**. Standard deep neural networks (such as PPO and DQN with CNNs) struggle severely with Sandtris due to extreme reward sparsity, non-rigid fluid dynamics, and spatial sensitivity. Instead, the Master Bot achieves near-immortal performance through a **carefully engineered 24-dimensional topological feature extractor, non-linear clipping bounds ("accidental logic gates"), a parameter vector optimized via CMA-ES (Covariance Matrix Adaptation Evolution Strategy), and a 2-ply Expectimax beam search lookahead** backed by a compiled C physics core.
+
+*Curious about the engineering, mathematics, and architecture behind the bot? Scroll down for the complete deep dive.*
 
 ---
 
 ## Table of Contents
-1. [Executive Overview](#1-executive-overview)
-2. [The Sandtris Challenge: Sand vs. Discrete Tetris](#2-the-sandtris-challenge-sand-vs-discrete-tetris)
-3. [System Architecture](#3-system-architecture)
-4. [File-by-File Technical Deep Dive](#4-file-by-file-technical-deep-dive)
-   - [sandtris_c_core.c (Native Physics & Evaluation Engine)](#1-sandtris_c_corec--so-native-c-engine)
-   - [sandtris_env_v10.py (Gymnasium Environment)](#2-sandtris_env_v10py-gymnasium-game-environment)
-   - [sandtris_parameterized_bot.py (1-Ply Feature Extractor & Bot)](#3-sandtris_parameterized_botpy-1-ply-decision-engine)
-   - [sandtris_lookahead_bot.py (2-Ply Beam Search Lookahead)](#4-sandtris_lookahead_botpy-2-ply-beam-search-engine)
-   - [train_heuristic_weights.py (CMA-ES Evolutionary Trainer)](#5-train_heuristic_weightspy-evolutionary-optimization)
-   - [watch_bot.py (Interactive Visualizer)](#6-watch_botpy-live-interactive-visualizer)
-5. [The Feature Engineering Breakthrough: "Accidental Logic Gates"](#5-the-feature-engineering-breakthrough-accidental-logic-gates)
-6. [Benchmark Performance & Results](#6-benchmark-performance--results)
-7. [Installation & Quickstart Guide](#7-installation--quickstart-guide)
-8. [Repository Map](#8-repository-map)
+1. [Gameplay Demonstrations](#1-gameplay-demonstrations)
+2. [The Sandtris Challenge: Why It Is Notorious for Computers](#2-the-sandtris-challenge-why-it-is-notorious-for-computers)
+3. [The 24-Dimensional Feature Space](#3-the-24-dimensional-feature-space)
+4. [The "Accidental Logic Gate" Clipping Breakthrough](#4-the-accidental-logic-gate-clipping-breakthrough)
+5. [CMA-ES Evolutionary Optimization](#5-cma-es-evolutionary-optimization)
+6. [System Architecture](#6-system-architecture)
+7. [File-by-File Technical Deep Dive](#7-file-by-file-technical-deep-dive)
+8. [Benchmark Performance & Results](#8-benchmark-performance--results)
+9. [Installation & Quickstart Guide](#9-installation--quickstart-guide)
+10. [Repository Map](#10-repository-map)
 
 ---
 
-## 1. Executive Overview
+## 1. Gameplay Demonstrations
 
-**Sandtris** transforms the rigid, discrete mechanics of classical 1984 Tetris into a continuous fluid dynamics challenge. When a falling tetromino touches settled terrain, its structural bonds shatter instantly into 100 individual grains of sand that collapse under gravity and slide diagonally at an angle of repose.
+Below is a comparison of different gameplay strategies, illustrating the progression from human intuition and early heuristic baselines to the grandmaster Master Bot:
 
-Early attempts using standard Deep Reinforcement Learning (PPO and DQN with CNNs) failed due to extreme spatial instability, fluid non-rigidity, and sparse reward landscapes. To overcome this, this project implements:
-
-1. **A Compiled C-Core Engine (`sandtris_c_core.so`)**: Accelerates cellular automata physics and connected-component graph analysis by **100x**, executing all 68 candidate moves per turn in under 15ms.
-2. **A 24-Dimensional Topological Feature Space**: Evaluates global board geometry, active piece growth frontiers, and background color preservation.
-3. **The "Accidental Logic Gate" Clipping Mechanism**: Narrow feature bounds that implicitly turn linear dot-products into non-linear decision-tree logic gates.
-4. **CMA-ES (Covariance Matrix Adaptation Evolution Strategy)**: Optimizes feature weights across multi-core parallel processes, breaking past the 1,000-step training limit.
-5. **2-Ply Expectimax Beam Search Lookahead**: Evaluates the expected future board survivability across all 7 next tetromino shapes.
+| 1. Human Gameplay | 2. Traditional Heuristic Bot |
+| :---: | :---: |
+| <img src="assets/human_gameplay.gif" alt="Human Gameplay Demo" width="360"/> | <img src="assets/traditional_bot.gif" alt="Traditional Bot Demo" width="360"/> |
+| *Human play relying on visual intuition and gestalt recognition. Survival: ~200–500 steps.* | *Handcrafted heuristic baseline without evolutionary weights. Survival: ~150 steps.* |
+| **3. 1-Ply Parameterized Bot** | **4. Master Bot (2-Ply Lookahead)** |
+| <img src="assets/one_ply_bot.gif" alt="1-Ply Bot Demo" width="360"/> | <img src="assets/master_bot_gameplay.gif" alt="Master Bot Demo" width="360"/> |
+| *1-ply CMA-ES optimized bot with non-linear clipping gates. Survival: ~4,800 steps.* | *2-ply Expectimax beam search evaluating 7 future tetromino shapes. Survival: 15,000+ steps.* |
 
 ---
 
-## 2. The Sandtris Challenge: Sand vs. Discrete Tetris
+## 2. The Sandtris Challenge: Why It Is Notorious for Computers
+
+To understand why traditional Game AI methods fail so catastrophically at Sandtris, one must appreciate how fundamentally it differs from classical discrete Tetris.
 
 ```
-Classical Tetris (Discrete, Rigid)              Sandtris (Continuous, Granular Fluid)
-┌─────────────────────────────────┐             ┌─────────────────────────────────────┐
-│  [ ] [ ] [ ] [ ] [ ] [ ] [ ]    │             │         . : : .   (Sand Peak)       │
-│  [X] [X] [X] [X] [X] [X] [X]    │ <- 1 Clear  │       . : : : : .                   │
-│  [X] [ ] [X] [X] [ ] [X] [X]    │             │   . : : ~Red Path~ : : . <- Clear!  │
-└─────────────────────────────────┘             │  : : : : : : : : : : : : :          │
-                                                └─────────────────────────────────────┘
+Classical 1984 Tetris (Discrete, Rigid)        Sandtris (Continuous Granular Fluid Dynamics)
+┌─────────────────────────────────┐            ┌───────────────────────────────────────────┐
+│  [ ] [ ] [ ] [ ] [ ] [ ] [ ]    │            │            . : : .   (Sand Dune Peak)     │
+│  [X] [X] [X] [X] [X] [X] [X]    │ <- 1 Row   │          . : : : : .                      │
+│  [X] [ ] [X] [X] [ ] [X] [X]    │   Clear    │      . : : ~Red Path~ : : . <- Path Clear!│
+└─────────────────────────────────┘            │     : : : : : : : : : : : : :             │
+                                               └───────────────────────────────────────────┘
 ```
 
-| Dimension | Classical Tetris | Sandtris |
-| :--- | :--- | :--- |
-| **Grid Size** | $10 \times 20$ (200 discrete cells) | **$85 \times 150$ (12,750 sand grains)** |
-| **Piece Behavior** | Rigid geometric matrix forever | Shatters into 100 grains upon impact |
-| **Physics** | Discrete row translation | **2-pass cellular automaton** (gravity + $45^\circ$ lateral slide) |
-| **Clear Condition** | Flat horizontal line of 10 blocks | **Continuous monochromatic path connecting left wall to right wall** |
-| **State Space** | Small, discrete binary matrix | Continuous fluid arrangements ($4^{12,750}$ combinations) |
-| **Post-Clear Event** | Discrete downward row shift | Dynamic gravitational avalanche into the newly opened vacuum |
+### 1. Human Visual Gestalt vs. Computer Lattice Perception
+* **How humans see the board**: A human player glances at Sandtris and instantly perceives continuous color bands, macroscopic slopes, and natural funnel crevices. Humans do not count pixels; they use intuitive physics and fluid gestalt recognition to drop pieces where sand will naturally slide into gaps.
+* **How a computer sees the board**: A computer must process an **$85 \times 150$ grid containing 12,750 independent cells**, each of which can hold one of 4 colors or air ($4^{12,750}$ potential states). There are no rigid objects, fixed bounding boxes, or static reference points.
+
+### 2. The Mechanics of Granular Avalanches
+In classical Tetris, a piece stays exactly where it lands. In Sandtris, every piece shatters into 100 grains upon contact. Each grain is governed by a **cellular automaton with a $45^\circ$ angle of repose**:
+* If the space below is free, sand falls vertically.
+* If blocked, sand spills laterally down-left or down-right.
+* This means dropping a piece on column 40 can trigger an avalanche that spills into column 35 and column 45, completely altering the terrain across multiple columns.
+
+### 3. Topological Percolation vs. Flat Row Clears
+A line clear in Sandtris is **not** a filled horizontal row. Instead, a clear is a **continuous, monochromatic connected component** connecting the left wall ($x=0$) to the right wall ($x=84$):
+* The clearing path can be jagged, diagonal, or undulating like a snake.
+* When a path clears, all grains in that connected component vanish, and the massive sand mountain above it undergoes dynamic gravitational collapse into the newly formed void.
+
+### 4. Irreversible State Corruption
+A single poorly placed piece of the wrong color can spill over a nearly finished line, burying that color beneath a 30-pixel-deep sand dune. In classical Tetris, you can dig through bad placements row-by-row. In Sandtris, **burying a color often renders it permanently inaccessible for the next 40 to 60 moves**, causing an unrecoverable downward spiral.
+
+### 5. Why Deep Reinforcement Learning (CNNs / PPO / DQN) Fails
+1. **Translational Invariance Breaks Down**: CNN convolutional kernels rely on patterns looking the same regardless of position. But two sand dunes of identical volume and color look completely different to a CNN if one has shifted sideways by just 2 pixels during an avalanche.
+2. **Extreme Reward Sparsity**: Clearing a path requires 15 to 40 consecutive moves of carefully building up matching colors across an 85-column expanse. A randomly exploring RL agent almost never sees a reward, making temporal credit assignment practically impossible.
+3. **Action Space Mismatch**: Frame-by-frame steering (left/right/rotate/drop) wastes 99% of training time learning joystick coordination rather than learning long-term topological planning.
 
 ---
 
-## 3. System Architecture
+## 3. The 24-Dimensional Feature Space
+
+To evaluate candidate placements efficiently, the game state following each simulated drop is projected onto a **24-dimensional feature vector** $\mathbf{\phi}(a)$:
+
+$$\text{Score}(a) = \sum_{i=0}^{23} w_i \cdot \phi_i(a)$$
+
+The features are organized into three distinct operational groups:
+
+### Group 1: Global Board Geometry & Clear Signals ($\phi_0 - \phi_4$)
+* **$\phi_0$ (`cleared`)**: Total number of sand grains eliminated by this move. Captures immediate path clears.
+* **$\phi_1$ (`max_height`)**: Height of the highest sand column from the floor ($0 - 150$). Directly measures ceiling danger and top-out risk.
+* **$\phi_2$ (`bumpiness`)**: Sum of absolute height differences between adjacent columns: $\sum_{x=0}^{83} |h_x - h_{x+1}|$. Low values indicate a flat, even sandbed that allows future pieces to slide smoothly.
+* **$\phi_3$ (`flow`)**: Dynamic lateral settling metric measuring how effectively sand spreads horizontally across valleys rather than stacking vertically.
+* **$\phi_4$ (`bridge`)**: Horizontal span of uncleared clusters. Acts as a penalty against creating overhangs, lingering residues, or dead-end ledges.
+
+### Group 2: Active Color Growth & Anchoring ($\phi_5 - \phi_{11}$)
+Evaluates the sand matching the color of the active falling piece:
+* **$\phi_5$ (`gap_active`)**: Shortest remaining pixel distance for any *single connected cluster* of this color to reach from wall to wall.
+* **$\phi_6$ (`gap_blockage`)**: Global bounding box span across all grains of this color. Detects whether the active color is anchored to a boundary wall or floating aimlessly in the center.
+* **$\phi_7$ (`comp_count`)**: Number of separate, disconnected clusters of this color. High values indicate messy, fragmented confetti; low values indicate clean, unified masses.
+* **$\phi_8$ (`max_comp_size`)**: Grain count of the largest single cluster of this color. Measures progress toward accumulating enough volume to span 85 columns.
+* **$\phi_9$ (`exposed_pixels`)**: Number of grains of this color touching air. Buried sand is inert; only exposed surface grains can connect with future pieces.
+* **$\phi_{10}$ (`useful_frontier`)**: Surface grains of this color that touch open sky (`air_mask`) AND face toward the target wall they are trying to reach.
+* **$\phi_{11}$ (`color_gaps`)**: Shortest path deficit across the board for the active color.
+
+### Group 3: Inactive Background Color Preservation ($\phi_{12} - \phi_{23}$)
+There are 4 colors in Sandtris. While the active piece is Color $A$, the other 3 colors ($O_1, O_2, O_3$) are already resting on the board. The bot **sorts the inactive colors by their proximity to completing a line clear**:
+* **$O_1$**: The inactive color **closest** to completing a line clear (most urgent to protect).
+* **$O_2$**: The second closest inactive color.
+* **$O_3$**: The furthest / least developed inactive color.
+
+For each inactive color, the bot tracks 4 identical metrics:
+* **$\phi_{12}, \phi_{16}, \phi_{20}$ (`color_gaps`)**: Distance remaining to clear for $O_1, O_2, O_3$.
+* **$\phi_{13}, \phi_{17}, \phi_{21}$ (`gap_blockage`)**: Wall anchoring status for $O_1, O_2, O_3$.
+* **$\phi_{14}, \phi_{18}, \phi_{22}$ (`max_comp_size`)**: Mass of the largest cluster for $O_1, O_2, O_3$.
+* **$\phi_{15}, \phi_{19}, \phi_{23}$ (`useful_frontier`)**: Open surface accessibility for $O_1, O_2, O_3$.
+
+> **Why Inactive Colors Matter**: Without tracking $O_1, O_2, O_3$, a bot would be color-blind to the rest of the board. It might place a green piece in a spot that looks favorable for green, but buries an almost-completed yellow line under sand. Tracking inactive colors allows the bot to learn negative weights (penalties) for moves that ruin future clears.
+
+---
+
+## 4. The "Accidental Logic Gate" Clipping Breakthrough
+
+Each raw feature $x_i$ is normalized to $[0.0, 1.0]$ via:
+
+$$\phi_i = \text{clip}\left(\frac{x_i - \min_i}{\max_i - \min_i}, 0.0, 1.0\right)$$
+
+In early development, normalization bounds in `CLIPPED_BOUNDS` were set to narrow empirical thresholds rather than true mathematical maxima:
+
+```python
+CLIPPED_BOUNDS = [
+    (0, 4),      # 0. cleared (Actual clears: 85 to 400+ grains)
+    (0, 150),    # 1. max_height
+    (0, 2000),   # 2. bumpiness
+    (0, 2.0),    # 3. flow
+    (0, 2.0),    # 4. bridge (Actual spans: 85+)
+    
+    # Active Color
+    (0, 85),     # 5. gap_active
+    (0, 100),    # 6. gap_blockage (Floating sand receives offset of 1000+)
+    (0, 20),     # 7. comp_count
+    (0, 4000),   # 8. max_comp_size
+    (0, 500),    # 9. exposed_pixels
+    (0, 300),    # 10. useful_frontier
+    (0, 85),     # 11. color_gaps
+    
+    # Inactive O1, O2, O3 (4 features each)
+    (0, 85), (0, 100), (0, 4000), (0, 300),
+    (0, 85), (0, 100), (0, 4000), (0, 300),
+    (0, 85), (0, 100), (0, 4000), (0, 300),
+]
+```
+
+### The Revelation: Linear Models vs. Non-Linear Clipping
+* **`cleared` clipped at 4**: A true line clear eliminates 85 to 200+ grains. Because `max = 4`, any clear immediately saturates to $1.0$. This transformed `cleared` into a binary indicator function:
+  $$\phi_0 \approx \mathbb{I}(\text{Did this move clear sand?})$$
+* **`gap_blockage` clipped at 100**: In C, unanchored floating sand is given a penalty offset of $1000 + \text{dist}$. Because the bound was set to `(0, 100)`, any floating cluster saturated hard to $1.0$, while anchored clusters remained below $0.85$. This acted as an "IS IT FLOATING?" boolean gate.
+
+### Ablation Comparison: Why Clipping Dominated
+In comparative experiments over 20 generations of CMA-ES:
+* **Linear Mode** (normalized against theoretical maxima like $2,000$): **Flatlined below 15,000 fitness**. A 1,500-grain cave produced a penalty 15 times larger than a 100-grain cave, causing the linear model to panic and drop pieces at the top of the board to avoid it.
+* **Clipped Mode**: **Exceeded 98,000 fitness**. The bot treated any large cave as a categorical boolean *"Danger (1.0)"*. Once danger was recognized, the model's remaining weights focused on finding the cleanest landing surface.
+
+By clipping continuous features into narrow ranges, a simple linear dot product gained the expressive power of **decision trees and threshold logic gates**.
+
+---
+
+## 5. CMA-ES Evolutionary Optimization
+
+To find the optimal 24-dimensional weight vector $\mathbf{w}^*$, we employed **CMA-ES (Covariance Matrix Adaptation Evolution Strategy)**, a derivative-free black-box optimizer.
+
+```python
+# train_heuristic_weights.py core evaluation
+fitness = steps_survived + total_grains_cleared
+```
+
+### Key Training Principles:
+1. **Parallel Worker Pool**: Uses Python's `multiprocessing.Pool` with the `'spawn'` start method to evaluate a population of 20 candidate weight vectors across all CPU cores simultaneously.
+2. **Seed-Controlled Fair Evaluation**: Each candidate in generation $G$ plays complete episodes on the exact same pseudo-random seeds (`gen_seeds`). This ensures differences in fitness are caused by **weight quality**, not lucky piece spawns.
+3. **The 1,000-Step Training Cap**: In early training, maximum fitness appeared to plateau at ~99,000. Investigation revealed the bot had not plateaued—it had beaten the training environment! It was surviving all 1,000 steps on nearly every seed and clearing 98% of all dropped sand.
+4. **Fine-Tuning with Variance Decay**: Resuming from Generation 20 (`--resume_from 1`) with step size reduced by $0.33\times$ ($\sigma_{\text{fine-tune}} = 0.33 \times \sigma_{\text{initial}}$) enabled micro-adjustments that produced the final champion weights (`best_clipped_weights_run2.npy`).
+
+### The Learned Champion Weights:
+```python
+[
+   4.7986, #  0: cleared (MASSIVE REWARD: +4.80)
+  -0.8765, #  1: max_height (Penalize high piles)
+  -2.0024, #  2: bumpiness (Strong penalty for rough terrain)
+   1.8665, #  3: flow (Encourage flat spreading)
+  -3.1716, #  4: bridge (CRITICAL PENALTY: Never leave uncleared overhangs)
+  -2.7891, #  5: gap_active (Penalize distance to clear)
+   1.9446, #  6: gap_blockage (Reward wall anchoring)
+  -1.0931, #  7: comp_count (Penalize cluster fragmentation)
+   0.3810, #  8: max_comp_size (Reward large unified clusters)
+  -2.1062, #  9: exposed_pixels
+  -2.5384, # 10: useful_frontier
+  -1.4736, # 11: color_gaps
+  # Inactive background colors O1, O2, O3
+  -0.4735, -0.6907,  1.4085, -2.1112,  # O1
+   2.6848, -0.6116,  2.8603,  1.1168,  # O2
+   0.9314,  0.1398,  0.0483,  0.8156   # O3
+]
+```
+
+---
+
+## 6. System Architecture
 
 ### Offline Training vs. Online Inference Flow
 
@@ -172,128 +324,66 @@ sequenceDiagram
 
 ---
 
-## 4. File-by-File Technical Deep Dive
+## 7. File-by-File Technical Deep Dive
 
 ### 1. `sandtris_c_core.c` / `.so` (Native C Engine)
-The C core executes all compute-heavy operations. The entire $150 \times 85$ board requires only 12.75 KB of RAM, fitting inside the CPU's **L1 data cache**.
+The compiled backbone of the system. The entire $150 \times 85$ board is 12.75 KB, allowing it to reside permanently within the CPU's **L1 data cache**:
+* **Gravity Kernel (`step_sand`)**:
+  * Scans bottom-up (`y = 148` down to `0`) so grains drop at uniform terminal velocity.
+  * Implements $45^\circ$ diagonal sliding with parity alternation `((x + y + iter) % 2 == 0)` to eliminate directional drift.
+  * Runs for up to 200 iterations with early exit when sand settles.
+* **Component Labeling (`evaluate_board`)**:
+  * Uses a static non-recursive stack (zero `malloc` calls during search).
+  * Performs 4-way flood fill to label single-color connected components and detect wall-to-wall path clears.
+* **Frontier & Sky Reachability (`evaluate_frontier_board`)**:
+  * Flood-fills air from the sky row ($y=0$) into `air_mask` to ignore subterranean caves.
+  * Computes target-facing useful frontiers and kinetic flow metrics.
+* **Batch Master Simulator (`simulate_all_actions_combined`)**:
+  * Receives all 68 candidate moves in flat arrays.
+  * Simulates the drop, sand settlement, and evaluations in a single C invocation, returning populated `EvalResult` and `EvalFrontierResult` structs.
 
-* **Cellular Automata Kernel (`step_sand`)**:
-  * **Pass 1 (Vertical Gravity)**: Scans from bottom up (`y = 148` down to `0`). Sand falls straight down if `world[y+1][x] == 0`.
-  * **Pass 2 (Diagonal Sliding)**: If directly blocked, grains slide diagonally down-left or down-right. An alternating parity mask `((x + y + iter) % 2 == 0)` alternates direction to eliminate artificial left/right pooling bias.
-  * Runs for up to 200 iterations with early termination when steady state is reached (`changed == false`).
-* **Classical Board Evaluator (`evaluate_board`)**:
-  * Column height profiling, maximum height, and column-to-column bumpiness: $\sum |h_x - h_{x+1}|$.
-  * Surface exposure mask: identifies sand grains touching empty air.
-  * Stack-based non-recursive flood fill (zero `malloc` calls in game loops). Tracks single-color connected components. If any single cluster touches both $x=0$ and $x=84$, it registers a line clear.
-* **Frontier Evaluator (`evaluate_frontier_board`)**:
-  * Air flood-fill starting from the sky row ($y=0$) into `air_mask`. This differentiates **open surface sand** from **sealed underground caves**.
-  * Directional useful frontier: counts exposed grains that face their target wall.
-  * Momentum flow metric: $\text{useful\_frontier} \times \left(\frac{\text{span}}{85}\right)^2 \times \left(\frac{\text{comp\_size}}{1000}\right)$.
-* **Master Batch Simulator (`simulate_all_actions_combined`)**:
-  * Receives all 68 action configurations from Python in flat arrays.
-  * Simulates the drop, sand settlement, and both evaluation functions on scratchpad memory.
-  * Validates legality and detects top-out game overs ($y=0$). Populates both `EvalResult` and `EvalFrontierResult` C structs.
-
-### 2. `sandtris_env_v10.py` (Gymnasium Game Environment)
-Maintains the canonical game state and exposes a standard Gymnasium reinforcement learning interface:
-* **Board & Pieces**: Grid dimensions $150 \times 85$, 4 distinct colors, 7 classic tetromino shapes ($5 \times 5$ grains per block = 100 grains per piece).
-* **Action Decoding**: Decodes a single integer action into rotation index ($0-3$) and target column block index ($0-16$):
-  ```python
-  rot_idx = action // num_block_cols
-  block_col = action % num_block_cols
-  ```
-* **Step Execution (`step`)**: Drops the active piece, invokes `_c_core.c_step_sand` to compute physical settlement, detects wall-to-wall component line clears, and spawns the next piece.
-* **State Isolation (`clone`)**: Deep-copies the environment state to enable lookahead branching without polluting the live game.
-* **Observation Tensor (`_get_obs`)**: Constructs a 3-channel normalized tensor `(3, 150, 85)`:
-  * Channel 0: Settled world sand.
-  * Channel 1: Active falling piece.
-  * Channel 2: Binary occupancy mask.
+### 2. `sandtris_env_v10.py` (Gymnasium Environment)
+Manages the canonical game state and exposes standard Gym APIs:
+* Maintains the persistent $150 \times 85$ NumPy grid, active piece coordinates, color states, and step counts.
+* Decodes discrete actions into column and rotation: `rot_idx = action // 17`, `block_col = action % 17`.
+* `clone()` method creates deep copies of the environment state for lookahead tree search.
+* Calls `_c_core.c_step_sand` for true in-game physical settlement.
 
 ### 3. `sandtris_parameterized_bot.py` (1-Ply Decision Engine)
-Converts raw simulation data into a decision score:
-* Binds Python to `sandtris_c_core.so` via `ctypes`.
-* Coordinates action batching: generates candidate geometries for all 68 possible actions and sends them to the C core in a single call.
-* Assembles the 24-dimensional feature vector $\mathbf{\phi}(a)$.
-* Normalizes features using `CLIPPED_BOUNDS` (or `TRUE_BOUNDS`).
-* Evaluates action quality via dot product: $\text{Score}(a) = \mathbf{\phi}(a) \cdot \mathbf{w}$.
-* Returns $\text{Best Action} = \arg\max_a \text{Score}(a)$.
+Converts raw simulation data into action decisions:
+* Formulates candidate geometries for all 68 possible actions.
+* Dispatches geometries to `simulate_all_actions_combined` via `ctypes`.
+* Assembles the 24-dimensional feature matrix $\mathbf{\Phi}$ ($68 \times 24$).
+* Normalizes features using `CLIPPED_BOUNDS`.
+* Computes placement scores via dot product: $\mathbf{s} = \mathbf{\Phi} \mathbf{w}$.
+* Returns $\arg\max(\mathbf{s})$.
 
 ### 4. `sandtris_lookahead_bot.py` (2-Ply Beam Search Engine)
-Implements depth-2 Expectimax search to prevent short-sighted tactical moves:
-* **Stage 1 (1-Ply Candidate Pruning)**: Uses `sandtris_parameterized_bot` to score all 68 actions, selecting the top-$K$ best candidates ($K=3$).
-* **Stage 2 (Future Branching)**: For each candidate move:
-  1. Clones the environment (`env.clone()`) and applies the candidate action.
-  2. If the move results in immediate death (`done == True`), it receives a $-\infty$ penalty.
-  3. Projects the next turn across all 7 standard tetromino shapes (`SHAPES`).
-  4. Computes the maximum possible score achievable for each prospective shape using the learned weights.
-  5. Computes the expected future value: $\mathbb{E}[\text{Future Score}] = \frac{1}{7} \sum_{s=1}^7 \max_{a'} \text{Score}(a' \mid s)$.
-* **Decision Criterion**:
-  $$\text{Action}^* = \arg\max_{a \in \text{Top-}K} \left( \text{BaseScore}(a) + 0.85 \times \mathbb{E}[\text{FutureScore} \mid a] \right)$$
+Implements depth-2 Expectimax lookahead:
+* Takes top-$K$ actions ($K=3$) from the 1-ply bot.
+* For each candidate action:
+  1. Clones the environment (`env.clone()`) and applies the move.
+  2. Projects the next turn across all 7 standard tetromino shapes (`SHAPES`).
+  3. Computes the maximum score achievable for each shape using the learned weights.
+  4. Computes the expected future score: $\mathbb{E}[\text{Future Score}] = \frac{1}{7} \sum_{s=1}^7 \max_{a'} \text{Score}(a' \mid s)$.
+* Selects the move maximizing $\text{BaseScore} + 0.85 \times \mathbb{E}[\text{Future Score}]$.
 
-### 5. `train_heuristic_weights.py` (Evolutionary Optimization)
-Trains the parameter weights $\mathbf{w}$ using Covariance Matrix Adaptation Evolution Strategy (CMA-ES):
-* **Parallel Population Evaluation**: Employs Python `multiprocessing.Pool` (using the `'spawn'` method for safe C-library sharing) to evaluate 20 candidate weight vectors across all CPU cores simultaneously.
-* **Fitness Formulation**:
-  $$\text{Fitness} = \text{Steps Survived} + \text{Total Grains Cleared}$$
-* **Controlled Evaluation**: Evaluates each candidate across identical pseudo-random seeds (`gen_seeds`) per generation to guarantee fair comparison.
-* **Fine-Tuning Mode**: Supports resuming from previous checkpoints with reduced mutation scale ($\sigma \leftarrow \sigma \times 0.33$) for local parameter refinement.
+### 5. `train_heuristic_weights.py` (CMA-ES Evolutionary Trainer)
+Manages the parallel evolutionary optimization pipeline:
+* Spawns worker processes using `multiprocessing.set_start_method('spawn')` for safe C-library sharing.
+* Evaluates 20 candidates per generation across fixed random seeds.
+* Tracks progress via `tqdm`, logging best and average generation fitness.
+* Saves learned weights to `best_{mode}_weights_run{id}.npy`.
 
-### 6. `watch_bot.py` (Live Interactive Visualizer)
-Interactive frontend for benchmarking and watching trained models play in real-time:
+### 6. `watch_bot.py` (Interactive Visualizer)
+The live Pygame frontend:
 * Loads learned weights from `.npy` files.
-* Configures Pygame rendering at native 60 FPS.
-* Allows seamless toggling between 1-ply direct evaluation and 2-ply lookahead (`--lookahead`).
-* Displays step counts, cleared grain tallies, and per-turn thinking latency in the console.
+* Supports toggling between 1-ply fast mode (~300 FPS) and 2-ply lookahead mode (`--lookahead`).
+* Displays step counts, cleared grain tallies, and per-turn thinking time.
 
 ---
 
-## 5. The Feature Engineering Breakthrough: "Accidental Logic Gates"
-
-### The 24-Dimensional Feature Vector
-
-```python
-# Raw features extracted per candidate action
-f[0]  = cleared                    # Grains cleared this turn
-f[1]  = max_height                  # Highest sand column
-f[2]  = bumpiness                   # Sum of column height deltas
-f[3]  = flow                        # Dynamic lateral settling displacement
-f[4]  = bridge                      # Span of uncleared horizontal clusters
-f[5]  = gap_active                  # Shortest gap to wall for active color
-f[6]  = gap_blockage                # Bounding box gap for active color
-f[7]  = comp_count                  # Disjoint cluster count (fragmentation)
-f[8]  = max_comp_size               # Mass of largest active cluster
-f[9]  = exposed_pixels              # Surface contact area for active color
-f[10] = useful_frontier             # Target-facing grains touching open sky
-f[11] = color_gaps                  # Shortest path gap for active color
-
-# Inactive background colors (sorted by proximity to clearing: O1, O2, O3)
-# Indices 12-15: color_gaps, gap_blockage, max_comp_size, useful_frontier for O1
-# Indices 16-19: color_gaps, gap_blockage, max_comp_size, useful_frontier for O2
-# Indices 20-23: color_gaps, gap_blockage, max_comp_size, useful_frontier for O3
-```
-
-### The Clipping Revelation: Linear vs. Clipped
-
-In early development, normalization bounds in `CLIPPED_BOUNDS` were set to narrow thresholds rather than true empirical maxima:
-* `cleared`: Bound set to `(0, 4)` (actual values range from $85$ to $400+$).
-* `gap_blockage`: Bound set to `(0, 100)` (floating sand receives an offset of $1000+$).
-* `bridge`: Bound set to `(0, 2.0)` (actual spans reach $85+$).
-
-Because features were clipped via $\text{clip}\left(\frac{x - \min}{\max - \min}, 0.0, 1.0\right)$, values saturated immediately at $1.0$:
-
-$$\phi_0 \approx \begin{cases} 1.0 & \text{if cleared} \ge 4 \\ 0.0 & \text{otherwise} \end{cases} \quad \text{(Acts as a boolean "DID I CLEAR?" gate)}$$
-
-$$\phi_6 \approx \begin{cases} 1.0 & \text{if floating in center} \\ <0.85 & \text{if anchored to wall} \end{cases} \quad \text{(Acts as an "IS IT FLOATING?" gate)}$$
-
-### Why Clipped Bounds Outperformed Linear Models
-In ablation experiments, **linear scaling flatlined below 15,000 fitness**, while **clipped mode exceeded 98,000 fitness**:
-* **Gradient Regularization**: In linear mode, a massive 1,500-grain cave produced a penalty 15 times larger than a 100-grain cave, causing the linear model to make suicidal moves at the top of the board to avoid it.
-* **Categorical Decisions**: In clipped mode, any cave larger than 100 grains was treated simply as *"Danger (1.0)"*. Once danger was recognized, the model's remaining weights focused on finding the cleanest landing surface.
-* **Non-Linear Expressivity**: Clipping endowed a basic linear dot-product with the expressive behavior of **decision trees and threshold logic units**.
-
----
-
-## 6. Benchmark Performance & Results
+## 8. Benchmark Performance & Results
 
 ### Simulation & Search Latency
 
@@ -303,25 +393,26 @@ In ablation experiments, **linear scaling flatlined below 15,000 fitness**, whil
 | **All 68 Candidate Actions Evaluated** | 2,010 ms | **18.5 ms** | **108x** |
 | **CMA-ES Generation Time (20 pop, 3 seeds)** | 62.5 minutes | **1.5 minutes** | **41x** |
 
-### Gameplay Longevity & Clear Rates
+### Longevity & Clear Rates
 
-| Strategy / Model | Mean Steps Survived | Total Grains Cleared | Failure Mode |
+| Strategy / Agent | Mean Steps Survived | Total Grains Cleared | Failure Mode |
 | :--- | :--- | :--- | :--- |
-| **Random Baseline** | $32 \pm 6$ | $0$ | Rapid top-out ceiling collision |
-| **DQN / PPO (CNN on Grid)** | $48 \pm 14$ | $12 \pm 8$ | Inability to learn continuous paths |
-| **1-Ply Linear Heuristics** | $145 \pm 38$ | $210 \pm 85$ | Panic placement from large penalties |
-| **1-Ply Clipped Bot (Gen 20)** | $1,000$ (capped) | $88,400$ | Exceeded episode training limit |
+| **Random Baseline** | $32 \pm 6$ | $0$ | Immediate ceiling collision |
+| **DQN / PPO (CNN on Grid)** | $48 \pm 14$ | $12 \pm 8$ | Spatial instability & reward sparsity |
+| **Traditional Handcrafted Heuristics** | $145 \pm 38$ | $210 \pm 85$ | Rigid rules unsuited to fluid shifts |
+| **1-Ply Linear Heuristics (True Bounds)**| $180 \pm 45$ | $340 \pm 110$ | Panic moves from giant cave penalties |
+| **1-Ply Clipped Bot (Gen 20)** | $1,000$ (capped) | $88,400$ | Exceeded training episode cap |
 | **1-Ply Clipped Bot (Uncapped)** | $4,850 \pm 420$ | $420,000+$ | Eventual color starvation trap |
-| **2-Ply Lookahead Bot (`best_clipped`)** | **15,032+** | **1,400,000+** | **Near-immortal play (exceeds human capability)** |
+| **Master Bot (2-Ply Lookahead)** | **15,032+** | **1,400,000+** | **Near-immortal grandmaster play** |
 
 ---
 
-## 7. Installation & Quickstart Guide
+## 9. Installation & Quickstart Guide
 
 ### Prerequisites
 * GCC or Clang (supporting C99)
 * Python 3.9+
-* NumPy, Pygame, Gymnasium, tqdm, cma
+* Required packages:
 
 ```bash
 pip install numpy pygame gymnasium tqdm cma scipy
@@ -336,30 +427,30 @@ gcc -O3 -shared -fPIC sandtris_c_core.c -o sandtris_c_core.so
 ```
 
 ### 2. Watch the Trained Bot in Action
-Run the interactive visualizer with the pre-trained weights (`best_clipped_weights_run2.npy`):
+Run the interactive visualizer with the pre-trained champion weights (`best_clipped_weights_run2.npy`):
 
 ```bash
-# 1-Ply Direct Decision Mode (~300 FPS)
+# 1-Ply Fast Decision Mode (~300 FPS)
 python watch_bot.py --mode clipped --run_id 2
 
-# 2-Ply Lookahead Mode (High-Level Strategy & Expectimax Search)
+# Master Bot Mode (2-Ply Lookahead Beam Search)
 python watch_bot.py --mode clipped --run_id 2 --lookahead
 ```
 
 ### 3. Run CMA-ES Evolutionary Training
-To train new heuristic weights from scratch or resume training:
+To train new weights from scratch or fine-tune existing weights:
 
 ```bash
 # Train from scratch for 20 generations
 python train_heuristic_weights.py --mode clipped --generations 20 --run_id 1
 
-# Resume from Run 1 and fine-tune with reduced variance
+# Resume from Run 1 and fine-tune with reduced variance (0.33x)
 python train_heuristic_weights.py --mode clipped --resume_from 1 --generations 20 --run_id 2
 ```
 
 ---
 
-## 8. Repository Map
+## 10. Repository Map
 
 ```
 sandtrisRLnew/
@@ -373,6 +464,7 @@ sandtrisRLnew/
 ├── watch_bot_animated.py          # Visualizer with smooth piece drop animations
 ├── best_clipped_weights_run1.npy  # Gen 20 CMA-ES learned weights (Run 1)
 ├── best_clipped_weights_run2.npy  # Gen 40 fine-tuned champion weights (Run 2)
-├── SANDTRIS_AI_BLOG.md            # In-depth engineering writeup and research post
+├── SANDTRIS_AI_BLOG.md            # Detailed engineering writeup and research blog post
+├── assets/                        # Gameplay demo GIFs and visual assets
 └── README.md                      # Primary project documentation
 ```
