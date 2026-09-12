@@ -55,8 +55,6 @@ Below is a comparison of different gameplay strategies, illustrating the progres
 | <img src="assets/one_ply_bot.gif" alt="1-Ply Bot Demo" width="360"/> | <img src="assets/master_bot_gameplay.gif" alt="Master Bot Demo" width="360"/> |
 | *1-ply CMA-ES optimized bot with non-linear clipping gates. Survival: ~4,800 steps.* | *2-ply Expectimax beam search evaluating 7 future tetromino shapes. Survival: 15,000+ steps.* |
 
----
-
 ## 2. The Sandtris Challenge
 
 ### What is easy for humans?
