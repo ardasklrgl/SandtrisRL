@@ -60,18 +60,34 @@ Below is a comparison of different gameplay strategies, illustrating the progres
 ## 2. The Sandtris Challenge
 
 ### What is easy for humans?
+* **Fluid Settling**: In classical Tetris, a piece stays exactly where it lands. In Sandtris, every piece shatters into 100 grains upon contact. Each grain obeys a **cellular automaton with a $45^\circ$ angle of repose**: if the space below is free, it falls straight down; if blocked, it spills diagonally down-left or down-right.
+* **Topological Line Clears**: A clear is **not** a flat horizontal row. A clear triggers when a **continuous, single-color connected path touches both walls** ($x=0$ to $x=84$). The path can be jagged, diagonal, undulating like a snake, or buried beneath other sand.
+* **The Danger of Burial**: Dropping the wrong color over a nearly finished line can bury it beneath a 30-pixel-deep sand dune. In classical Tetris, you can dig through bad placements row-by-row. In Sandtris, **burying a color often traps it for the next 40 to 60 moves**, triggering an unrecoverable death spiral.
+* **Human Intuition**: Humans look at the board and immediately see color groups, slopes, and crevices. Most importantly, we can easily picture **how grains will slide and settle before we drop a piece**, instinctively choosing placements that protect clusters close to finishing.
 
-In classical Tetris, a piece stays exactly where it lands. In Sandtris, every piece shatters into 100 grains upon contact. Each grain is governed by a **cellular automaton with a $45^\circ$ angle of repose**: If the space below is free, grain falls vertically. If blocked, grain spills laterally down-left or down-right.
+### Why is it notorious for Model-Free Deep RL (CNNs / PPO / DQN)?
+1. **Translational Invariance Breaks Down**: Convolutional neural networks assume visual patterns look similar regardless of location. But fluid sand shifts continuously—two sand dunes of identical size and color look completely different to a CNN if an avalanche shifts one sideways by just 2 pixels.
+2. **Extreme Reward Sparsity**: Completing an 85-column path requires 15 to 40 consecutive, coordinated moves of the same color. A randomly exploring RL agent almost never achieves a clear by chance, meaning it receives zero reward signal across millions of training steps.
+3. **Long-Horizon Credit Assignment**: Games last thousands of steps, but line clears only happen occasionally. A model-free network has no way to tell which of the last 30 moves set up the clear and which moves were harmful.
 
-A line clear in Sandtris is **not** a filled horizontal row. Instead, a clear is a **continuous, monochromatic connected component** touching both walls. The clearing path can be jagged, diagonal, undulating like a snake, or mostly buried.
+### Why not Model-Based RL (World Models)?
+* Training a neural network to predict the next fluid sand state is slow, lossy, and prone to hallucinating or deleting sand grains over multiple simulation steps (violating mass conservation).
+* We already have an exact, deterministic forward physics model: our compiled **C-core computes 200 iterations of ground-truth sand physics in 0.2 milliseconds**. Using a neural network to approximate what a tiny C function already does perfectly would only add latency and error.
 
-A single poorly placed piece of the wrong color can spill over a nearly finished group, burying that color beneath a 30-pixel-deep sand dune. In classical Tetris, you can dig through bad placements row by row but in Sandtris, **burying a color often renders it permanently inaccessible for the next 40 to 60 moves**, causing an unrecoverable downward spiral.
+### Why CMA-ES over Policy Gradients (PPO / REINFORCE) to optimize weights?
+Once we project candidate moves onto a 24-dimensional feature vector $\mathbf{\phi}_a$, we need to find the best weight vector $\mathbf{w}$ so that $\text{Action} = \arg\max_a (\mathbf{w} \cdot \mathbf{\phi}_a)$. Using CMA-ES instead of RL policy gradients was deliberate:
+1. **The Non-Differentiable $\arg\max$ Problem**: The gradient of an $\arg\max$ operation with respect to $\mathbf{w}$ is **zero almost everywhere**. A small tweak to a weight either changes nothing or abruptly flips the chosen column. Standard policy gradients rely on smooth probabilities, which introduces heavy noise during training.
+2. **No Need for Intermediate Step Rewards**: Policy gradients require computing gradients at every step across 1,000+ turns, causing gradient variance to explode. CMA-ES treats the entire episode as a black-box function:
+   $$\text{Fitness}(\mathbf{w}) = \text{Steps Survived} + \text{Grains Cleared}$$
+   It directly rewards weights that survive longer and clear more sand, completely bypassing step-level credit assignment.
+3. **The 24-Dimensional Sweet Spot**: Deep RL was invented because neural networks have millions of weights where evolutionary search suffers from the curse of dimensionality. But for **only 24 parameters**, CMA-ES is mathematically superior: it directly models the $24 \times 24$ covariance matrix of feature trade-offs (e.g. height penalty vs. clear bonus) and converges to optimal weights in just 20 to 40 generations.
 
-A human player glances at Sandtris and instantly perceives continuous color groups, slopes, and crevices. More importantly we can very intuitively see **how the grains will fall and settle** before we drop the piece. Can decide to protect the nearly finishing clusters.
-
-### Why is it notorious for Deep Reinforcement Learning (CNNs / PPO / DQN)?
-1. **Translational Invariance Breaks Down**: CNN convolutional kernels rely on patterns looking the same regardless of position. But two sand dunes of identical volume and color look completely different to a CNN if one has shifted sideways by just 2 pixels during an avalanche.
-2. **Extreme Reward Sparsity**: Clearing a path requires 15 to 40 consecutive moves of carefully building up matching colors across an 85-column expanse. A randomly exploring RL agent almost never sees a reward, making temporal credit assignment practically impossible.
+### Why only 24 features instead of thousands or millions?
+1. **The Curse of Dimensionality in CMA-ES**: CMA-ES maintains and updates a full covariance matrix of size $D \times D$. For $D = 24$, the matrix has only 576 numbers, meaning it can be updated in microseconds with a tiny population of 20 candidates per generation. If we had thousands of parameters, the covariance matrix computation would scale quadratically ($O(D^2)$ to $O(D^3)$), making evolutionary optimization impossible.
+2. **Eliminates Overfitting**: A model with thousands or millions of parameters easily overfits to specific random seeds and piece sequences. These 24 features represent the **universal physical laws of Sandtris** (ceiling danger, surface roughness, cluster mass, wall anchoring, and background color defense). They cannot overfit because every single feature has a direct physical meaning that holds true on any seed.
+3. **Blazing 15ms Inference**: During 2-step lookahead, the bot must evaluate hundreds of board states per second. These 24 features are extracted in a single pass of the C-core's BFS flood-fill. Evaluating thousands of features would create a massive CPU bottleneck and destroy real-time 60 FPS play.
+4. **Full Interpretability**: Unlike black-box neural networks, every learned weight can be audited by a human engineer: $+4.80$ rewards clears, $-2.00$ penalizes rough terrain, and $-3.17$ penalizes uncleared overhangs.
+5. **Empirically Proven in Ablation Studies**: We actually tested larger feature sets! We built an `engineered` mode (27 features) and a `binned` mode (**47 features** with 23 categorical thresholds). The 47-feature bot trained slower and performed worse than the compact 24-feature bot—proving that adding more parameters only diluted the search space without adding real physical insight.
 
 ---
 
