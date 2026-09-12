@@ -10,7 +10,11 @@
 ## Overview
 
 <div align="center">
-  <img src="assets/master_bot_gameplay.gif" alt="Master Bot Gameplay Demo" width="700"/>
+  
+
+https://github.com/user-attachments/assets/c5db11b7-b383-4417-9b5e-58cd35a53ae9
+
+
   <p><em>The best bot achieving sustained, master level play (15,000+ steps/pieces) via 2-step Expectimax lookahead.</em></p>
 </div>
 
@@ -43,17 +47,18 @@ Jump to [Section 9](#9-installation--quickstart-guide) for the guide to installa
 
 ---
 
+
 ## 1. Gameplay Demonstrations
 
-Below is a comparison of different gameplay strategies, illustrating the progression from human intuition and early heuristic baselines to the grandmaster Master Bot:
+Below is a comparison of different gameplay strategies, illustrating the progression from human intuition and early heuristic baselines to the grandmaster bot:
 
 | 1. Human Gameplay | 2. Traditional Heuristic Bot |
 | :---: | :---: |
-| <img src="assets/human_gameplay.gif" alt="Human Gameplay Demo" width="360"/> | <img src="assets/traditional_bot.gif" alt="Traditional Bot Demo" width="360"/> |
-| *Human play relying on visual intuition and gestalt recognition. Survival: ~200–500 steps.* | *Handcrafted heuristic baseline without evolutionary weights. Survival: ~150 steps.* |
-| **3. 1-Ply Parameterized Bot** | **4. Master Bot (2-Ply Lookahead)** |
-| <img src="assets/one_ply_bot.gif" alt="1-Ply Bot Demo" width="360"/> | <img src="assets/master_bot_gameplay.gif" alt="Master Bot Demo" width="360"/> |
-| *1-ply CMA-ES optimized bot with non-linear clipping gates. Survival: ~4,800 steps.* | *2-ply Expectimax beam search evaluating 7 future tetromino shapes. Survival: 15,000+ steps.* |
+| https://github.com/user-attachments/assets/c7ab3224-5934-4f2c-8687-7dc5037b8e9c | https://github.com/user-attachments/assets/17a7bcaf-3331-4da0-b17d-45908d1f4f09 |
+| *Human play. (Speed up)* | *Handcrafted heuristic bot. Only optimizing total closeness to finishing. Survival: ~150 steps.* |
+| **3. 1-Step Parameterized Bot** | **4. Master Bot (2-Step Lookahead)** |
+| https://github.com/user-attachments/assets/e7c90c7a-efb5-4c3f-908c-781bc713d27d | https://github.com/user-attachments/assets/a57ce6b0-8361-475e-8001-6aa8525dae42 |
+| *1-step CMA-ES optimized bot with non-linear clipping gates. Survival: ~5,000 steps. (No speedup)* | *2-step Expectimax beam search evaluating 7 future tetromino shapes. Survival: 15,000+ steps. (Speed up)* |
 
 ## 2. The Sandtris Challenge
 
