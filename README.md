@@ -20,7 +20,19 @@ https://github.com/user-attachments/assets/c5db11b7-b383-4417-9b5e-58cd35a53ae9
   <p><em>The best bot achieving sustained, master level play (15,000+ steps/pieces) via 2-step Expectimax lookahead.</em></p>
 </div>
 
-**Sandtris AI** is an autonomous game-playing system built to solve the notoriously chaotic dynamics of **Falling-Sand Tetris**. When a tetromino lands in Sandtris, its rigid structure shatters into 100 grains of sand that collapse under gravity and slide into adjacent valleys. 
+**Sandtris AI** is a bot built to play the sand based Tetris game Sandtris which rose to popularity online in the last few years. 
+
+For those who are not familiar with the game, the main mechanics are:
+* The board is based on grains, not blocks. Each tetromino has 100 grains (5*5 per block for 4 blocks) which shatters when the piece lands.
+* The grains follow a sand flowing automata, falls down, or left/right if it can.
+* Each grain (and piece) has a color (red green yellow blue), and the clearing mechanic isn't based on lines but monochromatic clusters that touch both walls. A cluster of any shape or form that touches both sides clears. Only grains of the same color that touch orthogonally can form clusters.
+And that's about it. 
+
+The aim of the project from the start was to essentially solve this game with whatever means necessary. Trying many approaches from hand crafted heuristics to RL, nearly all of them either resulted in absolute failures (cannot even reach 200 steps/pieces), or at most "meh" results (maxing out at 500 steps).
+
+Then after choosing to abandon Deep RL altogether and shifting to making an optimizer for a 24 feature heuristic model using CMA-ES, I was finally able to make a bot that not only beat my previous models by a mile going from 500 to 5,000 steps, but also beat my new record holder shortly after thanks to implementing a lookahead. The best model I have in hand after under 60 mins of training managed to last over 15k in 3.5 hours, ~0.84 second per piece, in the first run I did. 
+
+Could it last longer? Probably. There could be still room left to explore to make it **actually** immortal rather than _practically_ immortal. However, I wouldn't be surprised if my model could be very close to a "perfect" one achievable with a relatively lightweight solution, and for other reasons I go deeper into at [section 2](#2-the-sandtris-challenge).
 
 **Important Note on the AI Approach:**  Despite the project's historical name, the high performing **Master Bot is NOT powered by Deep Reinforcement Learning**. Standard deep neural networks (such as PPO and DQN with CNNs) struggle severely with Sandtris due to reward sparsity, non-rigid fluid dynamics, and spatial sensitivity. 
 
@@ -29,8 +41,6 @@ Instead, the Master Bot achieves near immortal performance through a **engineere
 However, **the complete Gymnasium compliant environment (sandtris_env_v10.py)** is fully intact and included in this repository for anyone interested in experimenting, benchmarking, or training their own custom RL algorithms (PPO, DQN, A2C, etc.) on Sandtris.
 
 More details on challenges of Sandtris, and a deep dive on the architecture of the bot can be found below.
-
-Jump to [Section 9](#9-installation--quickstart-guide) for the guide to installation and training the bot.
 
 ---
 
@@ -51,7 +61,7 @@ Jump to [Section 9](#9-installation--quickstart-guide) for the guide to installa
 
 ## 1. Gameplay Demonstrations
 
-Below is a comparison of different gameplay strategies, illustrating the progression from human intuition and early heuristic baselines to the grandmaster bot:
+Below is a comparison of different gameplay strategies. The human gameplay and the 2-step master bot are both sped up to give a better idea of the overall look of the gameplay. Human (my) gameplay is about 1 piece per ~2 seconds, the 2-step ma bot 
 
 | 1. Human Gameplay | 2. Traditional Heuristic Bot |
 | :---: | :---: |
@@ -59,7 +69,7 @@ Below is a comparison of different gameplay strategies, illustrating the progres
 | *Human play. (Speed up)* | *Handcrafted heuristic bot. Only optimizing total closeness to finishing. Survival: ~150 steps.* |
 | **3. 1-Step Parameterized Bot** | **4. Master Bot (2-Step Lookahead)** |
 | https://github.com/user-attachments/assets/e7c90c7a-efb5-4c3f-908c-781bc713d27d | https://github.com/user-attachments/assets/a57ce6b0-8361-475e-8001-6aa8525dae42 |
-| *1-step CMA-ES optimized bot with non-linear clipping gates. Survival: ~5,000 steps. (No speedup)* | *2-step Expectimax beam search evaluating 7 future tetromino shapes. Survival: 15,000+ steps. (Speed up)* |
+| *1-step CMA-ES optimized bot with non-linear clipping gates. Survival: ~5,000 steps. (No speedup)* | *2-step Expectimax beam search. Survival: 15,000+ steps. (Speed up)* |
 
 ## 2. The Sandtris Challenge
 
