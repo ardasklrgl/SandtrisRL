@@ -32,15 +32,15 @@ The aim of the project from the start was to essentially solve this game with wh
 
 Then after choosing to abandon Deep RL altogether and shifting to making an optimizer for a 24 feature heuristic model using CMA-ES, I was finally able to make a bot that not only beat my previous models by a mile going from 500 to 5,000 steps, but also beat my new record holder shortly after thanks to implementing a lookahead. The best model I have in hand after under 60 mins of training managed to last over 15k in 3.5 hours, ~0.84 second per piece, in the first run I did. 
 
-Could it last longer? Probably. There could be still room left to explore to make it **actually** immortal rather than _practically_ immortal. However, I wouldn't be surprised if my model could be very close to a "perfect" one achievable with a relatively lightweight solution, and for other reasons I go deeper into at [section 2](#2-the-sandtris-challenge).
+Could it last longer? Probably, it is not immortal, the bot eventually faced such a bad sequence of colors that it was just game over. After all the color of the piece matters so much: if you are very close to clearing with let's say blue, and the next best color is green, and the game rng just gives you red and yellow so you end up burying the good clusters. But then right after they are buried the game starts giving you blues/greens, ruining the red/yellow clusters too. 
+
+Despite the element of bad luck catching up to you at some point, there still could be room left to explore to make it **actually** immortal rather than _practically_ immortal. However, I wouldn't be surprised if my model could be very close to a "perfect" one achievable with a relatively lightweight solution, and for other reasons I go deeper into at [section 2](#2-the-sandtris-challenge) questions 4-5.
 
 **Important Note on the AI Approach:**  Despite the project's historical name, the high performing **Master Bot is NOT powered by Deep Reinforcement Learning**. Standard deep neural networks (such as PPO and DQN with CNNs) struggle severely with Sandtris due to reward sparsity, non-rigid fluid dynamics, and spatial sensitivity. 
 
-Instead, the Master Bot achieves near immortal performance through a **engineered 24-dimensional topological feature extractor, non-linear clipping bounds ("accidental logic gates"), a parameter vector optimized via CMA-ES (Covariance Matrix Adaptation Evolution Strategy), and a 2-step Expectimax beam search lookahead** backed by a C physics core.
+Instead, the Master Bot achieves near immortal performance through a **engineered 24-dimensional feature extractor, non-linear clipping bounds ("accidental logic gates"), a parameter vector optimized via CMA-ES (Covariance Matrix Adaptation Evolution Strategy), and a 2-step Expectimax beam search lookahead** backed by a C physics core.
 
 However, **the complete Gymnasium compliant environment (sandtris_env_v10.py)** is fully intact and included in this repository for anyone interested in experimenting, benchmarking, or training their own custom RL algorithms (PPO, DQN, A2C, etc.) on Sandtris.
-
-More details on challenges of Sandtris, and a deep dive on the architecture of the bot can be found below.
 
 ---
 
@@ -49,9 +49,9 @@ More details on challenges of Sandtris, and a deep dive on the architecture of t
 2. [The Sandtris Challenge](#2-the-sandtris-challenge)
 3. [CMA-ES and the 24-Dimensional Feature Space](#3-cma-es-and-the-24-dimensional-feature-space)
 4. [The "Accidental Logic Gate" Clipping Breakthrough](#4-the-accidental-logic-gate-clipping-breakthrough)
-5. [The Learned Champion Weights](#5-the-learned-champion-weights)
+5. [The Champion Weights](#5-the-champion-weights)
 6. [System Architecture](#6-system-architecture)
-7. [File-by-File Technical Deep Dive](#7-file-by-file-technical-deep-dive)
+7. [File-by-File](#7-file-by-file)
 8. [Benchmark Performance & Results](#8-benchmark-performance--results)
 9. [Installation & Quickstart Guide](#9-installation--quickstart-guide)
 10. [Repository Map](#10-repository-map)
@@ -61,15 +61,15 @@ More details on challenges of Sandtris, and a deep dive on the architecture of t
 
 ## 1. Gameplay Demonstrations
 
-Below is a comparison of different gameplay strategies. The human gameplay and the 2-step master bot are both sped up to give a better idea of the overall look of the gameplay. Human (my) gameplay is about 1 piece per ~2 seconds, the 2-step ma bot 
+Below is a comparison of different gameplay strategies. The human gameplay and the 2-step master bot are both sped up to give a better idea of the overall look of the gameplay. Human (my) gameplay is about ~2 seconds per piece, the 2-step lookahead bot is ~0.84s per piece.
 
 | 1. Human Gameplay | 2. Traditional Heuristic Bot |
 | :---: | :---: |
 | https://github.com/user-attachments/assets/c7ab3224-5934-4f2c-8687-7dc5037b8e9c | https://github.com/user-attachments/assets/17a7bcaf-3331-4da0-b17d-45908d1f4f09 |
-| *Human play. (Speed up)* | *Handcrafted heuristic bot. Only optimizing total closeness to finishing. Survival: ~150 steps.* |
+| *Human play. (Speed up)* | *Handcrafted heuristic bot. Only optimizing total closeness to finishing. Survival: ~150 steps. (No speed up)* |
 | **3. 1-Step Parameterized Bot** | **4. Master Bot (2-Step Lookahead)** |
 | https://github.com/user-attachments/assets/e7c90c7a-efb5-4c3f-908c-781bc713d27d | https://github.com/user-attachments/assets/a57ce6b0-8361-475e-8001-6aa8525dae42 |
-| *1-step CMA-ES optimized bot with non-linear clipping gates. Survival: ~5,000 steps. (No speedup)* | *2-step Expectimax beam search. Survival: 15,000+ steps. (Speed up)* |
+| *1-step CMA-ES optimized bot with non-linear clipping gates. Survival: ~5,000 steps. (No speed up)* | *2-step lookahead. Survival: 15,000+ steps. (Speed up)* |
 
 ## 2. The Sandtris Challenge
 
@@ -85,26 +85,26 @@ Below is a comparison of different gameplay strategies. The human gameplay and t
 * **Credit Assignment**: With games lasting thousands of moves, model-free networks cannot determine which of the last 30 drops set up a clear.
 
 ### 3. Why not Model-Based RL (World Models)?
-* Neural networks trained to predict next-state sand physics are slow, lossy, and violate mass conservation (hallucinating or deleting grains).
-* We already have an exact, deterministic simulator: our compiled **C-core runs 200 physics iterations in 0.2 ms**.
+* Neural networks trained to predict next-state sand physics are slow  and violate mass conservation (hallucinating or deleting grains).
+* We already have an exact simulator: our **C-core runs 200 iterations in 0.2 ms**.
 
 ### 4. Could C-Core simulation + Deep RL (AlphaZero style) work?
-In theory, an AlphaZero setup (tree search using the C-core + a Deep CNN Value Network) is sound. However, in practice:
+In theory, an AlphaZero setup (tree search using the C-core + a Deep CNN Value Network) is sound. However, in practice it suffers from a few issues:
 * **Search Performance**: 2-step lookahead evaluates hundreds of candidate boards per move. Our 24-feature linear scorer takes **15 ms total on CPU**. Passing batches through a Deep CNN takes 300–1,000 ms, destroying real-time 60 FPS play.
 * **Precision (1-Pixel Gaps)**: CNN convolutional filters blur spatial details. A line clear requires exact 1-pixel diagonal connectivity; CNNs struggle to distinguish closed vs. broken paths. Our C BFS flood-fill checks this with 100% precision.
-* **15,000-Step Value Drift**: Sandtris games last 15,000+ steps if played correctly. Deep value networks suffer massive Bellman bootstrapping error over such horizons, whereas our 24 physical features + CMA-ES already achieves near-immortal play in **20 minutes of training on a single laptop CPU.**
+* **15,000-Step Value Drift**: Sandtris games last 15,000+ steps if played correctly. Deep value networks suffer massive Bellman bootstrapping error over such horizons, whereas our 24 physical features + CMA-ES already converges in 20-30 mins, and achieves near-immortal play in **about 50 minutes of total training on a single laptop CPU.**
 
 ### 5. Why CMA-ES over Policy Gradients to optimize weights?
 Once moves are projected onto a 24-dimensional feature vector $\mathbf{\phi}_a$, we score them as $\text{Score} = \mathbf{w} \cdot \mathbf{\phi}_a$ and pick $\arg\max$:
-1. **Non-Differentiable $\arg\max$**: The gradient of $\arg\max$ with respect to $\mathbf{w}$ is zero almost everywhere, causing standard policy gradients to fail or suffer massive variance.
-2. **Episode-Level Fitness**: CMA-ES optimizes total survival and cleared grains as a black-box fitness function, bypassing per-step reward shaping and gradient backpropagation.
-3. **The Sweet Spot 24**: Evolutionary strategies degrade in high dimensions, but for 24 parameters, CMA-ES directly models the exact $24 \times 24$ covariance matrix of feature trade-offs, converging in 20–30 generations.
+* **Non-Differentiable $\arg\max$**: The gradient of $\arg\max$ with respect to $\mathbf{w}$ is zero almost everywhere, causing standard policy gradients to fail or suffer massive variance.
+* **Episode-Level Fitness**: CMA-ES optimizes total survival and cleared grains as a black-box fitness function, bypassing per-step reward shaping and gradient backpropagation.
+* **The Sweet Spot 24**: Evolutionary strategies degrade in high dimensions, but for 24 parameters, CMA-ES directly models the exact $24 \times 24$ covariance matrix of feature trade-offs, converging in 20–30 generations.
 
 ### 6. Why only 24 features instead of hundreds or thousands?
-1. **Curse of Dimensionality in CMA-ES**: At $D=24$, the $24 \times 24$ covariance matrix updates in microseconds with a population of 20. Millions of parameters would make CMA-ES intractable ($O(D^2)$ to $O(D^3)$).
-2. **Zero Overfitting**: Every feature reflects universal physical invariants (ceiling risk, surface roughness, cluster mass, wall anchoring, background defense) that hold on every seed.
-3. **15 ms Inference**: Features are extracted in a single BFS flood fill pass inside the C-core, maintaining 60 FPS real time lookahead.
-4. **Full Interpretability**: Learned weights can be audited directly (e.g. $+4.80$ clears, $-2.00$ roughness, $-3.17$ overhangs).
+* **Curse of Dimensionality in CMA-ES**: At $D=24$, the $24 \times 24$ covariance matrix updates in microseconds with a population of 20. Millions of parameters would make CMA-ES intractable ($O(D^2)$ to $O(D^3)$).
+* **Zero Overfitting**: Every feature reflects universal physical invariants (ceiling risk, surface roughness, cluster mass, wall anchoring, background defense) that hold on every seed.
+* **15 ms Inference**: Features are extracted in a single BFS flood fill pass inside the C-core, maintaining 60 FPS real time lookahead.
+* **Full Interpretability**: Learned weights can be audited directly (e.g. $+4.80$ clears, $-2.00$ roughness, $-3.17$ overhangs).
 
 ---
 
@@ -203,7 +203,7 @@ CLIPPED_BOUNDS = [
   $$\phi_0 \approx \mathbb{I}(\text{Did this move clear sand?})$$
 * **`gap_blockage` clipped at 100**: In C, unanchored floating sand is given a penalty offset of $1000 + \text{dist}$. Because the bound was set to `(0, 100)`, any floating cluster saturated hard to $1.0$, while anchored clusters remained below $0.85$. This acted as an "IS IT FLOATING?" boolean gate.
 
-### Ablation Comparison: Why Clipping Dominated
+### Why Clipping Dominated
 In comparative experiments over 20 generations of CMA-ES:
 * **Linear Mode** (normalized against theoretical maxima like $2,000$): **Flatlined below 15,000 fitness**. A 1,500-grain cave produced a penalty 15 times larger than a 100-grain cave, causing the linear model to panic and drop pieces at the top of the board to avoid it.
 * **Clipped Mode**: **Exceeded 98,000 fitness**. The bot treated any large cave as a categorical boolean *"Danger (1.0)"*. Once danger was recognized, the model's remaining weights focused on finding the cleanest landing surface.
@@ -223,10 +223,10 @@ CHAMPION_WEIGHTS = [
    -0.8765,  #  1: max_height    -> Penalty for high sand piles / top-out danger
    -2.0024,  #  2: bumpiness     -> Strong penalty for rough terrain (favors smooth flats)
     1.8665,  #  3: flow          -> Reward for lateral sand settling into valleys
-   -3.1716,  #  4: bridge        -> CRITICAL PENALTY: Never leave floating overhangs/ledges
+   -3.1716,  #  4: bridge        -> HEAVY PENALTY: Never leave floating overhangs/ledges
 
     # --- Group 2: Active Color Growth & Anchoring ---
-   -2.7891,  #  5: gap_active    -> Penalize remaining distance to clear wall-to-wall
+   -2.7891,  #  5: gap_active    -> Penalize remaining distance to clear
     1.9446,  #  6: gap_blockage  -> Reward anchoring clusters against the boundary walls
    -1.0931,  #  7: comp_count    -> Penalize fragmented confetti clusters
     0.3810,  #  8: max_comp_size -> Reward growing large unified color masses
@@ -359,7 +359,7 @@ sequenceDiagram
 
 ## 7. File-by-File
 
-### 1. `sandtris_c_core.c` / `.so` (C Engine)
+### 1. `sandtris_c_core.c` / `.so` (C-core Engine)
 The compiled backbone of the system. The entire $150 \times 85$ board is 12.75 KB, allowing it to reside permanently within the CPU's **L1 data cache**:
 * **Gravity Kernel (`step_sand`)**:
   * Scans bottom-up (`y = 148` down to `0`) so grains drop at uniform terminal velocity.
