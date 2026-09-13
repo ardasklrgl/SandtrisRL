@@ -1,4 +1,4 @@
-# Sandtris AI: High-Performance Heuristic Search & Evolutionary Optimization for Falling-Sand Tetris
+# Sandtris AI: Solving Sand Tetris with Evolutionary Heuristics
 
 [![Language](https://img.shields.io/badge/Language-Python%203.9%2B%20%7C%20C99-blue.svg)](#)
 [![Simulation Speed](https://img.shields.io/badge/Speedup-100x%20C--Accelerated-brightgreen.svg)](#)
