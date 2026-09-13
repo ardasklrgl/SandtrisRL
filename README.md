@@ -42,6 +42,17 @@ Instead, the Master Bot achieves near immortal performance through a **engineere
 
 However, **the complete Gymnasium compliant environment (sandtris_env_v10.py)** is fully intact and included in this repository for anyone interested in experimenting, benchmarking, or training their own custom RL algorithms (PPO, DQN, A2C, etc.) on Sandtris.
 
+### Key Findings:
+
+* Exact simulation beats learned physics. The C-core is fast and accurate enough that a learned world model is unnecessary.
+* 24 features was a sweet spot. More features did not consistently improve performance, while fewer lost important strategic information.
+* Clipping was a major breakthrough. Narrow normalization bounds turned continuous features into useful threshold-like signals, dramatically outperforming conventional normalization.
+* CMA-ES works well for the compact policy. With only 24 parameters, it efficiently optimized the heuristics directly from gameplay performance.
+* Lookahead matters. 2-step stochastic lookahead improved the best observed survival from roughly 5,000 to 15,000+ steps.
+* The final solution is lightweight. No deep neural network is required: an exact physics simulator, 24 physical features, optimized weights, and shallow search are enough to achieve extremely long play.
+
+If there is one thing this projects demonstrates, it is that turning an apparently chaotic fluid game into a tractable problem is possible through the right representation, a cheap exact simulator, and a tiny evolutionary optimizer.
+
 ---
 
 ## Table of Contents
