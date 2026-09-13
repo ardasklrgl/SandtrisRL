@@ -76,12 +76,12 @@ Below is a comparison of different gameplay strategies. The human gameplay and t
 ### 1. What is easy for humans?
 * **Predicting Settling Sand**: Unlike rigid Tetris, pieces shatter into 100 grains obeying a **$45^\circ$ angle of repose cellular automaton**: grains fall vertically or slide diagonally down slopes until they can't. A human can intuitively tell how the grains will fall and settle before even piece touches the ground, e.g. how to use avalanches to span many columns, or valleys to prevent it.
 * **Clearing**: Clears require a **continuous, monochromatic connected group spanning from wall to wall**, not a flat horizontal row. No two clear looks the same, so the clearing procedure is just difficult to anticipate and generalise. However it is still generalisable enough to humans to produce consistent gameplay.
-* **Burial Protection**: Dropping the wrong color over a developing path buries it beneath a 30 pixel sand dune, trapping that color for many moves. Deciding to protect the clusters close to clearing or not is a key part of the games strategt and this ability is also a result of the grain-fall intution we mentioned. 
+* **Burial Protection**: Dropping the wrong color over a developing path buries it beneath a 30 pixel sand dune, trapping that color for many moves. Deciding to protect the clusters close to clearing or not is a key part of the games strategy and this ability is also a result of the grain-fall intution we mentioned. 
 
 ### 2. Why does Model-Free Deep RL (PPO / DQN) fail?
 *Model-free* agents have no internal physics simulator (can't calculate grain falling), they act blindly from raw observation frames and trial-and-error:
 * **Translational Invariance Breaks**: Shifting a dune by 2 pixels changes raw CNN activations completely despite identical physics.
-* **Extreme Reward Sparsity**: Spanning 85 columns takes ~4-6 drops of the same color, but pieces cycle randomly across 4 colors. A random agent carelessly drops other colors over developing paths, burying and fragmenting them. Achieving a clear by random trial-and-error has a very low probability, so the agent can receives extremely sparse rewards for playing even millions of steps.
+* **Extreme Reward Sparsity**: Spanning 85 columns takes ~4-6 drops of the same color, but pieces cycle randomly across 4 colors. A random agent carelessly drops other colors over developing paths, burying and fragmenting them. Achieving a clear by random trial-and-error has a very low probability, so the agent can receive extremely sparse rewards for playing even millions of steps.
 * **Credit Assignment**: With games lasting thousands of moves, model-free networks cannot determine which of the last 30 drops set up a clear.
 
 ### 3. Why not Model-Based RL (World Models)?
@@ -214,7 +214,7 @@ By clipping continuous features into narrow ranges, a simple linear dot product 
 
 ## 5. The Champion Weights
 
-After running (`train_heuristic_weights.py`) for 20 genenerations at 20 popsize (20 candidate game per gen) at 1.0 standard deviation, then another 20 gens, 20 popsize, 0.33 std to fine-tune (total training time was below 1 hour on my laptops CPU), CMA-ES converged on the following 24-dimensional champion weight vector (`best_clipped_weights_run2.npy`):
+After running (`train_heuristic_weights.py`) for 20 generations at 20 popsize (20 candidate game per gen) at 1.0 standard deviation, then another 20 gens, 20 popsize, 0.33 std to fine-tune (total training time was below 1 hour on my laptops CPU), CMA-ES converged on the following 24-dimensional champion weight vector (`best_clipped_weights_run2.npy`):
 
 ```python
 CHAMPION_WEIGHTS = [
@@ -399,7 +399,7 @@ Implements depth-2 Expectimax lookahead:
   2. Projects the next turn across all 7 standard tetromino shapes (`SHAPES`).
   3. Computes the maximum score achievable for each shape using the learned weights.
   4. Computes the expected future score: $\mathbb{E}[\text{Future Score}] = \frac{1}{7} \sum_{s=1}^7 \max_{a'} \text{Score}(a' \mid s)$.
-* Selects the move maximizing $\text{BaseScore} + 0.85 \times \mathbb{E}[\text{Future Score}]$.
+* Selects the move maximizing $\text{BaseScore} + 0.5 \times \mathbb{E}[\text{Future Score}]$.
 
 ### 5. `train_heuristic_weights.py` (CMA-ES Evolutionary Trainer)
 Manages the parallel evolutionary optimization pipeline:
