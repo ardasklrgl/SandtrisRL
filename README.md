@@ -6,7 +6,15 @@
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](#)
 
 ---
-> To see the best model play, just clone the repo and run:
+> ## 🚨🚨🚨🚨**UPDATE**🚨🚨🚨🚨
+> I have a new bot that achieved **40k steps** running **2.5x faster** per piece, using the exact same weights:
+> 
+> <img width="619" height="30" alt="Ekran Resmi 2026-09-14 23 54 22" src="https://github.com/user-attachments/assets/50ad7433-a96e-48a4-b7f1-bef9d3e41dbf" />
+>
+> Full update coming soon.
+
+
+> To see the best model (15k) play, just clone the repo and run:
 > ```python watch_bot.py --mode clipped --run_id 2 --lookahead ```
 
 ## Overview
