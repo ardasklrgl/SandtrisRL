@@ -412,7 +412,7 @@ Converts raw simulation data into action decisions:
 
 ### 4. `sandtris_lookahead_bot.py` (2-Step Beam Search Engine)
 Implements depth-2 Expectimax lookahead:
-* Takes top-$K$ actions ($K=3$) from the 1-ply bot.
+* Takes top-K actions ($K=3$) from the 1-ply bot.
 * For each candidate action:
   1. Clones the environment (`env.clone()`) and applies the move.
   2. Projects the next turn across all 7 standard tetromino shapes (`SHAPES`).
